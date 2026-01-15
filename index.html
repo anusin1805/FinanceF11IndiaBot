@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Ticker Chat Assistant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px;
+        }
+        .chat-container {
+            width: 100%; max-width: 800px; height: 90vh; background: white;
+            border-radius: 20px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 25px; text-align: center;
+        }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; background: #f8f9fa; }
+        .message { margin-bottom: 20px; display: flex; animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message.user { justify-content: flex-end; }
+        .message-content { max-width: 70%; padding: 12px 18px; border-radius: 18px; line-height: 1.4; }
+        .message.bot .message-content { background: white; color: #333; border: 1px solid #e0e0e0; border-bottom-left-radius: 4px; }
+        .message.user .message-content { background: #667eea; color: white; border-bottom-right-radius: 4px; }
+        .stock-card {
+            background: #fff; border-radius: 12px; padding: 15px; margin-top: 10px;
+            border-left: 4px solid #667eea; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .stock-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 14px; margin-top: 10px; }
+        .label { font-weight: bold; color: #666; }
+        .chat-input-container { padding: 20px; background: white; border-top: 1px solid #e0e0e0; }
+        .chat-input-wrapper { display: flex; gap: 10px; }
+        #messageInput { flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 25px; outline: none; }
+        #sendBtn { padding: 12px 25px; background: #667eea; color: white; border: none; border-radius: 25px; cursor: pointer; font-weight: bold; }
+        .ticker-chip { display: inline-block; padding: 5px 12px; background: #eee; border-radius: 15px; margin: 4px; cursor: pointer; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>📈 Stock Ticker Assistant</h1>
+            <p>Live Data from Google Sheets</p>
+        </div>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-content">
+                    Hello! I'm loading live data... Please wait a moment.
+                </div>
+            </div>
+        </div>
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <input type="text" id="messageInput" placeholder="Type a ticker (e.g., TSLA, AAPL)..." />
+                <button id="sendBtn">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stockData = {};
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // 1. Fetch live data from your specific Google Sheet
+        async function getLiveSheetData() {
+            const sheetId = '1YGNIxeDVD0FyO0shvhL_AQ0gcM9qaXEoN8lyyXWaf_s';
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json`;
+
+            try {
+                const response = await fetch(url);
+                const text = await response.text();
+                const json = JSON.parse(text.substring(47, text.length - 2));
+                const rows = json.table.rows;
+
+                const liveData = {};
+                rows.forEach(row => {
+                    const ticker = row.c[3]?.v; // Column D
+                    if (ticker) {
+                        liveData[ticker.toString().toUpperCase()] = {
+                            name: row.c[2]?.v || "Unknown Company", // Column C
+                            exchange: row.c[1]?.v || "N/A",         // Column B
+                            close: row.c[8]?.v || 0,                // Column I
+                            marketCap: row.c[12]?.v || "N/A",       // Column M
+                            category: row.c[2]?.v || "N/A"          // Column C (Category/Name)
+                        };
+                    }
+                });
+                return liveData;
+            } catch (err) {
+                console.error("Error loading Sheet:", err);
+                return null;
+            }
+        }
+
+        // Initialize Data
+        getLiveSheetData().then(data => {
+            if (data) {
+                stockData = data;
+                addMessage("Live data loaded! You can now check prices for tickers like <b>TSLA, AAPL, or MSFT</b>.");
+            } else {
+                addMessage("⚠️ Failed to load spreadsheet. Make sure the sheet is shared as 'Anyone with the link can view'.");
+            }
+        });
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function handleMessage() {
+            const query = messageInput.value.trim().toUpperCase();
+            if (!query) return;
+
+            addMessage(query, true);
+            messageInput.value = '';
+
+            // Search logic
+            const data = stockData[query];
+            if (data) {
+                const card = `
+                    <div class="stock-card">
+                        <h3>${query} - ${data.name}</h3>
+                        <div class="stock-info">
+                            <div><span class="label">Price:</span> $${data.close}</div>
+                            <div><span class="label">Exchange:</span> ${data.exchange}</div>
+                            <div><span class="label">Market Cap:</span> ${data.marketCap}</div>
+                        </div>
+                    </div>`;
+                addMessage(`Found it! Here is the data for ${query}: ${card}`);
+            } else {
+                addMessage(`Sorry, I couldn't find <b>${query}</b> in Column D of your spreadsheet.`);
+            }
+        }
+
+        sendBtn.addEventListener('click', handleMessage);
+        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleMessage(); });
+    </script>
+</body>
+</html>

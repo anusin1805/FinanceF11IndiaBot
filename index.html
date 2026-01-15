@@ -60,97 +60,99 @@
             </div>
         </div>
     </div>
+<script>
+    let stockData = {};
+    const chatMessages = document.getElementById('chatMessages');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
 
-    <script>
-        let stockData = {};
-        const chatMessages = document.getElementById('chatMessages');
-        const messageInput = document.getElementById('messageInput');
-        const sendBtn = document.getElementById('sendBtn');
+    async function getLiveSheetData() {
+        // Range A1:P13000 ensures we grab all 12,580+ rows
+        const sheetId = '1YGNIxeDVD0FyO0shvhL_AQ0gcM9qaXEoN8lyyXWaf_s';
+        const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&range=A1:P13000`;
 
-        // 1. Fetch live data from your specific Google Sheet
-        async function getLiveSheetData() {
-            const sheetId = '1YGNIxeDVD0FyO0shvhL_AQ0gcM9qaXEoN8lyyXWaf_s';
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=Sheet1&range=A1:P13000`;
+        try {
+            const response = await fetch(url);
+            const text = await response.text();
+            
+            // This trims the Google-specific header and footer from the JSON
+            const json = JSON.parse(text.substring(47, text.length - 2));
+            const rows = json.table.rows; // <--- 'rows' is defined here!
 
-            try {
-                const response = await fetch(url);
-                const text = await response.text();
-                const json = JSON.parse(text.substring(47, text.length - 2));
-                const rows = json.table.rows;
+            const liveData = {};
+            
+            rows.forEach((row, index) => {
+                // DEBUG: Look at your F12 console to see the first 5 rows
+                if(index < 5) console.log(`Row ${index} Debug:`, row.c);
 
-                const liveData = {};
-                rows.forEach(row => {
-                    const ticker = row.c[3]?.v; // Column D
-                    if (ticker) {
-                        liveData[ticker.toString().toUpperCase()] = {
-                            name: row.c[2]?.v || "Unknown Company", // Column C
-                            exchange: row.c[1]?.v || "N/A",         // Column B
-                            close: row.c[8]?.v || 0,                // Column I
-                            marketCap: row.c[12]?.v || "N/A",       // Column M
-                            category: row.c[2]?.v || "N/A"          // Column C (Category/Name)
-                        };
-                    }
-                });
-                return liveData;
-            } catch (err) {
-                console.error("Error loading Sheet:", err);
-                return null;
-            }
+                const tickerObj = row.c[3]; // Column D
+                const priceObj = row.c[8];  // Column I
+                const nameObj = row.c[2];   // Column C
+
+                if (tickerObj && tickerObj.v) {
+                    const ticker = tickerObj.v.toString().toUpperCase().trim();
+                    liveData[ticker] = {
+                        name: nameObj ? nameObj.v : "Unknown",
+                        close: priceObj ? priceObj.v : "0.00",
+                        marketCap: row.c[12] ? row.c[12].v : "N/A",
+                        exchange: row.c[1] ? row.c[1].v : "N/A"
+                    };
+                }
+            });
+
+            console.log("Success! Total rows processed:", Object.keys(liveData).length);
+            return liveData;
+
+        } catch (err) {
+            console.error("Critical Error loading Sheet:", err);
+            return null;
         }
+    }
 
-        // Initialize Data
-        getLiveSheetData().then(data => {
-            if (data) {
-                stockData = data;
-                addMessage("Live data loaded! You can now check prices for tickers like <b>TSLA, AAPL, or MSFT</b>.");
-            } else {
-                addMessage("⚠️ Failed to load spreadsheet. Make sure the sheet is shared as 'Anyone with the link can view'.");
-            }
-        });
-
-        function addMessage(content, isUser = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
-            messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Initialize the bot
+    getLiveSheetData().then(data => {
+        if (data && Object.keys(data).length > 0) {
+            stockData = data;
+            addMessage("✅ Live data loaded! I am monitoring <b>" + Object.keys(data).length + "</b> tickers.");
+        } else {
+            addMessage("❌ Failed to load data. Please ensure your Google Sheet is shared as 'Anyone with the link can view'.");
         }
+    });
 
-        function handleMessage() {
-            const query = messageInput.value.trim().toUpperCase();
-            if (!query) return;
+    function addMessage(content, isUser = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+        messageDiv.innerHTML = `<div class="message-content">${content}</div>`;
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
 
-            addMessage(query, true);
-            messageInput.value = '';
+    function handleMessage() {
+        const query = messageInput.value.trim().toUpperCase();
+        if (!query) return;
 
-            // Search logic
+        addMessage(query, true);
+        messageInput.value = '';
+
+        if (stockData[query]) {
             const data = stockData[query];
-            if (data) {
-                const card = `
-                    <div class="stock-card">
-                        <h3>${query} - ${data.name}</h3>
-                        <div class="stock-info">
-                            <div><span class="label">Price:</span> $${data.close}</div>
-                            <div><span class="label">Exchange:</span> ${data.exchange}</div>
-                            <div><span class="label">Market Cap:</span> ${data.marketCap}</div>
-                        </div>
-                    </div>`;
-                addMessage(`Found it! Here is the data for ${query}: ${card}`);
-            } else {
-                addMessage(`Sorry, I couldn't find <b>${query}</b> in Column D of your spreadsheet.`);
-            }
+            const card = `
+                <div class="stock-card">
+                    <h3>${query} - ${data.name}</h3>
+                    <div class="stock-info">
+                        <div><span class="label">Last Close:</span> $${data.close}</div>
+                        <div><span class="label">Exchange:</span> ${data.exchange}</div>
+                        <div><span class="label">Market Cap:</span> ${data.marketCap}</div>
+                    </div>
+                </div>`;
+            addMessage(`Data for ${query}: ${card}`);
+        } else {
+            addMessage(`Sorry, I couldn't find <b>${query}</b> in my database.`);
         }
+    }
 
-        sendBtn.addEventListener('click', handleMessage);
-        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleMessage(); });
-
-        rows.forEach((row, index) => {
-    // This logs the first 5 rows to your browser console (F12)
-    if(index < 5) console.log("Row Data:", row.c); 
-
-    const ticker = row.c[3]?.v; // Index 3 = Column D
-    // ... rest of code
-});
-    </script>
+    sendBtn.addEventListener('click', handleMessage);
+    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleMessage(); });
+</script>
 </body>
 </html>

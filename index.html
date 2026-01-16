@@ -66,30 +66,23 @@
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
 
-        // --- MAIN DATA FETCHING FUNCTION ---
         async function getLiveSheetData() {
-            // 1. Correct Spreadsheet ID
             const sheetId = '1W4G9JNnxBMCBOg5c42j1_8AthrTT9wfLIHGkYP5uqxs';
-            
-            // 2. Correct Sheet Name (Handling spaces safely)
             const sheetName = "All Tickers India";
             const encodedSheetName = encodeURIComponent(sheetName);
 
-            // 3. Construct URL: Range A2:P20000 ensures we skip the header and get all data
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodedSheetName}&range=A2:P20000`;
+            // UPDATED: Range A2:Z20000 ensures we get columns way out to the right (like Company Name)
+            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${encodedSheetName}&range=A2:Z20000`;
 
             try {
                 const response = await fetch(url);
                 const text = await response.text();
-                
-                // Clean the response text to get valid JSON
                 const json = JSON.parse(text.substring(47, text.length - 2));
                 const rows = json.table.rows;
                 const totalRows = rows.length;
-                
-                console.log(`Received ${totalRows} rows from Google.`);
 
-                // --- OPTIMIZED LOADING (PREVENTS BROWSER FREEZE) ---
+                console.log(`Received ${totalRows} rows.`);
+
                 const chunkSize = 2000;
                 let index = 0;
 
@@ -98,22 +91,26 @@
                     
                     for (let i = index; i < limit; i++) {
                         const row = rows[i];
-                        const tickerCell = row.c[3]; // Column D
+                        const tickerCell = row.c[3]; // Column D is Index 3
                         
                         if (tickerCell && tickerCell.v) {
                             const ticker = tickerCell.v.toString().toUpperCase().trim();
                             
-                            // Map columns:
+                            // --- FIXED MAPPINGS ---
                             // Col D (3) = Ticker
-                            // Col C (2) = Name
                             // Col I (8) = Close Price
-                            // Col M (12) = Market Cap
-                            // Col B (1) = Exchange
+                            // Col N (13) = Market Cap (Fixed: was 12)
+                            // Col V (21) = Company Name (Fixed: was 2)
+                            
+                            // Try Column V (21) for Name, fallback to Col C (2) if empty
+                            let companyName = "Unknown";
+                            if (row.c[21]) companyName = row.c[21].v;
+                            else if (row.c[2]) companyName = row.c[2].v;
 
                             stockData[ticker] = {
-                                name: row.c[2] ? row.c[2].v : "Unknown Name",
+                                name: companyName,
                                 close: row.c[8] ? row.c[8].v : "0.00",
-                                marketCap: row.c[12] ? row.c[12].v : "N/A",
+                                marketCap: row.c[13] ? row.c[13].v : "N/A", // Fixed Index 13
                                 exchange: row.c[1] ? row.c[1].v : "N/A"
                             };
                         }
@@ -122,28 +119,22 @@
                     index += chunkSize;
 
                     if (index < totalRows) {
-                        setTimeout(processChunk, 0); // Load next chunk
+                        setTimeout(processChunk, 0); 
                     } else {
-                        // All done
                         const count = Object.keys(stockData).length;
-                        addMessage(`✅ Loaded! I am tracking <b>${count}</b> Indian stocks.`);
-                        console.log("Processing complete.");
+                        addMessage(`✅ Loaded! Tracking <b>${count}</b> Indian stocks.`);
                     }
                 }
-
-                // Start processing
                 processChunk();
 
             } catch (err) {
-                console.error("Error loading specific sheet:", err);
-                addMessage("❌ Error: Could not load data. Check console (F12) for details.");
+                console.error("Error:", err);
+                addMessage("❌ Error loading data. Check console.");
             }
         }
 
-        // --- STARTUP ---
         getLiveSheetData();
 
-        // --- CHAT INTERFACE LOGIC ---
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
@@ -159,9 +150,11 @@
             addMessage(query, true);
             messageInput.value = '';
 
-            // Check if we have data for this ticker
             if (stockData[query]) {
                 const data = stockData[query];
+                // Format Market Cap: If it's a huge number, format it nicely? 
+                // For now, we print it exactly as the sheet has it.
+                
                 const card = `
                     <div class="stock-card">
                         <h3>${query} - ${data.name}</h3>
@@ -174,9 +167,9 @@
                 addMessage(`Found it! Here is the data for ${query}: ${card}`);
             } else {
                 if (Object.keys(stockData).length === 0) {
-                     addMessage(`Still loading data... please wait a moment.`);
+                     addMessage(`Still loading... please wait.`);
                 } else {
-                    addMessage(`Sorry, I couldn't find <b>${query}</b> in the 'All Tickers India' sheet (Col D).`);
+                    addMessage(`Sorry, I couldn't find <b>${query}</b>.`);
                 }
             }
         }

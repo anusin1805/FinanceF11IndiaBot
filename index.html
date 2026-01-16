@@ -69,8 +69,8 @@
         // --- MAIN DATA FETCHING FUNCTION ---
         async function getLiveSheetData() {
             // 1. We request range A1:P20000 to ensure we get ALL rows
-            const sheetId = '1YGNIxeDVD0FyO0shvhL_AQ0gcM9qaXEoN8lyyXWaf_s';
-            const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&range=A10:P20000&sheet=All US Tickers&range=A10:P20000`;
+            const sheetId = '1W4G9JNnxBMCBOg5c42j1_8AthrTT9wfLIHGkYP5uqxs';
+            const url = 'https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&range=A10:P20000&sheet=All Tickers India&range=A2:P10000`;
 
             try {
                 const response = await fetch(url);
